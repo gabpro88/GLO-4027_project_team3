@@ -1,9 +1,10 @@
 setwd("E:\\GLO-4027\\Data")
 train <- read.csv2('trainpretraite.csv', stringsAsFactors = T)
-
+##########fonctions du démarrage à froid##########
 profilEvaluation <- function(gender, age, occupation){
   train[which((train$Gender == gender) & (train$Age == age) & (train$Occupation == occupation)),]
 }
+
 meanMoviesFromProfil <- function(gender, age, occupation){
   result <- list()
   getEval <- profilEvaluation(gender, age, occupation)
@@ -77,6 +78,24 @@ meanMovies <- function(gender, age, occupation){
   return(all)
 }
 
+
+###########Fonctions utilisateur avec evaluation########
+train[train$UserID, train$Gender, train$Age, train$Occupation]
+matriceSimilitudeUtilisateur <- train[,.(Gender, Age, Occupation, UserID), keyby=.(Gender, Age, Occupation, UserID)]
+ml <- matriceSimilitudeUtilisateur[,.(Gender, Age, Occupation, UserID),]
+ss<-ml[,c(1,2,3)]
+ml$Age <- as.factor(ml$Age)
+ml$Occupation <- as.factor(ml$Occupation)
+
+unlist(strsplit(colnames(ss), '[.]'))[2 * (1:ncol(ss))]
+X1 <- cbind(model.matrix(~Gender-1, ml),model.matrix(~Age-1, ml),
+model.matrix(~Occupation-1, ml))
+M <- linKernel(X1,normalize = T)
+M[3,8]
+colnames(M)<-ml$UserID
+rownames(M)<-ml$UserID
+
+head(M[4,])
 # Pour chaques utilisateur estimé lerating en fonction de global, Profil, rating
 
 lkk <- meanMovies(gender, age, occupation)
@@ -99,3 +118,5 @@ lm(rating.x-rating.y~-1+I(Profil-rating.y)+I(Global-rating.y),data=all)
 # utilisateur 1 profil global rating *rating
 # utilisateur 1 profil
 # utilisateur 2 profil
+
+
