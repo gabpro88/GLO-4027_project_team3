@@ -1,4 +1,5 @@
-setwd("E:\\GLO-4027\\Data")
+####changer le chemin ici dépendemment d'ou vous ouvrez le fichier.
+setwd("E:/GLO-4027/Github/GLO-4027_project_team3")
 train <- read.csv2('trainpretraite.csv', stringsAsFactors = T)
 ##########fonctions du démarrage à froid##########
 profilEvaluation <- function(gender, age, occupation){
@@ -8,8 +9,6 @@ profilEvaluation <- function(gender, age, occupation){
 meanMoviesFromProfil <- function(gender, age, occupation){
   result <- list()
   getEval <- profilEvaluation(gender, age, occupation)
-  print(dim(getEval))
-  print(paste(gender, age, occupation,'MMP', sep='_'))
   ### retrourne la moyenne de tout les films d'un profil 
   dt <- as.data.frame(aggregate(getEval[,c('rating')],by = list(getEval$MovieID), FUN=mean ))
   colnames(dt) <- c('Id','Profil')
@@ -22,8 +21,6 @@ meanMoviesFromGlobal <- function(gender, age, occupation){
   ### Retourne la moyenne de tous les films dans l'ensemble du jeu de donnée selon les films évalués par le profil
   result <- list()
   getEval <- subset(train, MovieID %in% unique(profilEvaluation(gender, age, occupation)$MovieID))
-  print(dim(getEval))
-  print(paste(gender, age, occupation,'MMG', sep='_'))
   dt <- as.data.frame(aggregate(getEval[,c('rating')],by = list(getEval$MovieID), FUN=mean ))
   colnames(dt) <- c('Id','Global')
   return(dt)
@@ -68,13 +65,20 @@ meanProfilSimilaire <- function(gender, age, occupation){
 
 
 meanMovies <- function(gender, age, occupation){
-  meanPerProfil <- meanMoviesFromProfil(gender, age, occupation)
-  meanGlobal <- meanMoviesFromGlobal(gender, age, occupation)
-  meanPerProfilSimilaire <- meanProfilSimilaire(gender, age, occupation)
-  X1 <- cbind(meanPerProfil,meanGlobal)
-  all <- merge(X1[,-3],meanPerProfilSimilaire,by="Id",all.x=TRUE)
-  all[is.na(all)] <- 0
-  all$ratingGlobal <- (all$Profil + all$Global + all$rating)/3
+  profilEval <- profilEvaluation(gender, age, occupation)
+  if(nrow(profilEval) != 0){
+    meanPerProfil <- meanMoviesFromProfil(gender, age, occupation)
+    meanGlobal <- meanMoviesFromGlobal(gender, age, occupation)
+    meanPerProfilSimilaire <- meanProfilSimilaire(gender, age, occupation)
+    X1 <- cbind(meanPerProfil,meanGlobal)
+    all <- merge(X1[,-3],meanPerProfilSimilaire,by="Id",all.x=TRUE)
+    all[is.na(all)] <- 0
+    all$ratingGlobal <- (all$Profil + all$Global + all$rating)/3
+  }
+  else{
+    all <- as.data.frame(aggregate(train[,c('rating')],by = list(train$MovieID), FUN=mean ))
+    colnames(all) <- c('Id', 'ratingGlobal')
+  }
   return(all)
 }
 
@@ -96,8 +100,59 @@ colnames(M)<-ml$UserID
 rownames(M)<-ml$UserID
 
 head(M[4,])
-# Pour chaques utilisateur estimé lerating en fonction de global, Profil, rating
 
+##### A optimiser ######
+##### Evaluation note selon similitude entre utilisateur
+getSim <- function(userid,vl) {
+  return(tapply(vl$UserID,list(vl$UserID),function(x) M[paste(userid),paste(x) ]))
+}
+ratingSimilitudeUser <- function(userid){
+  vlt <- data.frame(MovieID=c(), UserID=c(), rating=c(), V2=c())
+  listnonregarde <- train[which(!(unique(train$MovieID) %in% unique(subset(train, UserID==userid)$MovieID))), c("MovieID")]
+  for(movie in unique(listnonregarde$MovieID)) {
+    vl <- subset(train, MovieID==movie)[,c('MovieID','UserID','rating')]
+    vlt <- rbind(vlt,cbind(vl,getSim(userid,vl)))
+  }
+  rating <- vlt[,.(R = sum(rating*V2)/sum(V2)),keyby=.(MovieID)]
+  rating[order(-R),]
+  return(rating)
+}
+##### Evalutation notes selon similitude entre film
+
+#######MAIN#######
+top100movies <- function(userid){
+  profil <- users[which(users$ID == userid),]
+  evaluationUser <- train[which((train$UserID == userid)),]
+  if(nrow(evaluationUser) == 0){
+    meanResult <- meanMovies(profil$Gender, profil$Age, profil$Occupation)
+    ordermeanResult <- meanResult[order(meanResult$ratingGlobal, decreasing = TRUE),]
+    top100 <- head(ordermeanResult,200)
+    extractIDandRating <- subset(top100, select=c("Id", "ratingGlobal"))
+  }
+  else{
+    extractIDandRating <- ''
+  }
+  return(extractIDandRating)
+}
+
+
+######Test sur tous les utilisateurs.  On boucle sur la fonction top10movies####
+users <- read.csv2('users.dat', stringsAsFactors = T)
+bestMoviesPerUser <- function(){
+  temp <- users[501:1000,]
+  sampleTokaggle <- data.frame()
+  for(userid in temp$ID){
+    print(userid)
+    result <- top100movies(userid)
+    userIdandmoviesId <- paste(userid, result$Id, sep='_')
+    sampleTokaggle <- rbind(sampleTokaggle, data.frame(userid, result$ratingGlobal, userIdandmoviesId))
+  }
+  colnames(sampleTokaggle) <- c('user','rating','id')
+  return(sampleTokaggle)
+}
+write.csv(bestMoviesPerUser(), file = "sample2.csv", row.names=F, quote = FALSE)
+
+##### Pour chaques utilisateur estimé lerating en fonction de global, Profil, rating. test pour pondération
 lkk <- meanMovies(gender, age, occupation)
 lm(rating ~ Profil + Global + rating - 1, data=lkk)
 
